@@ -1,0 +1,4 @@
+.vscode
+env/
+datasets/
+__pycache__/
