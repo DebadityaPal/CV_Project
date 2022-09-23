@@ -3,7 +3,7 @@ from sklearn.model_selection import train_test_split
 import os
 
 
-class Dataset(Dataset):
+class GANDataset(Dataset):
     def __init__(self, image_paths, label_paths):
         self.image_paths = image_paths
         self.label_paths = label_paths
@@ -13,6 +13,19 @@ class Dataset(Dataset):
 
     def __getitem__(self, index):
         return self.image_paths[index], self.label_paths[index]
+
+
+def test_file_name(image_filepaths):
+    res = []
+    for image in image_filepaths:
+        ext = image.split('.')[-1]
+        image = image.split('.')[0]
+        image = image.split('_')[:-1]
+        image = '_'.join(image)
+        image = image + '.' + ext
+        image.replace('INPUT_IMAGES', 'GT_IMAGES')
+        res.append(image)
+    return res
 
 
 def create_train_test_eval_sets(exposure_errors_path=None, lol_path=None, uieb_path=None):
@@ -31,39 +44,31 @@ def create_train_test_eval_sets(exposure_errors_path=None, lol_path=None, uieb_p
 
     if exposure_errors_path is not None:
         print("Loading exposure errors dataset")
-        # list of image names
-        train_dataset += [
+        # list of images
+        train_set = [
             os.path.join(exposure_errors_path,
                          'training', 'INPUT_IMAGES', x)
             for x in os.listdir(os.path.join(exposure_errors_path, 'training', 'INPUT_IMAGES'))
         ]
-        test_dataset += [
+        test_set = [
             os.path.join(exposure_errors_path,
                          'testing', 'INPUT_IMAGES', x)
             for x in os.listdir(os.path.join(exposure_errors_path, 'testing', 'INPUT_IMAGES'))
         ]
-        val_dataset += [
+        val_set = [
             os.path.join(exposure_errors_path,
                          'validation', 'INPUT_IMAGES', x)
             for x in os.listdir(os.path.join(exposure_errors_path, 'validation', 'INPUT_IMAGES'))
         ]
 
+        train_dataset += train_set
+        test_dataset += test_set
+        val_dataset += val_set
+
         # list of labels
-        train_labels += [
-            os.path.join(exposure_errors_path,
-                         'training', 'GT_IMAGES', x)
-            for x in os.listdir(os.path.join(exposure_errors_path, 'training', 'GT_IMAGES'))
-        ]
-        test_labels += [
-            os.path.join(exposure_errors_path,
-                         'testing', 'expert_a_testing_set', x)
-            for x in os.listdir(os.path.join(exposure_errors_path, 'testing', 'expert_a_testing_set'))
-        ]
-        val_labels += [
-            os.path.join(exposure_errors_path,
-                         'validation', 'GT_IMAGES', x)
-            for x in os.listdir(os.path.join(exposure_errors_path, 'validation', 'GT_IMAGES'))
-        ]
+        train_labels += test_file_name(train_set)
+        test_labels += test_file_name(test_set)
+        val_labels += test_file_name(val_set)
 
     if lol_path is not None:
         print("Loading LOL dataset")
@@ -132,6 +137,4 @@ def create_train_test_eval_sets(exposure_errors_path=None, lol_path=None, uieb_p
         test_labels += test_labels
         val_labels += val_labels
 
-    print("Training Images: ", len(train_dataset), "images")
-    print("Testing Images: ", len(test_dataset), "images")
-    print("Validation Images: ", len(val_dataset), "images")
+    return train_dataset, test_dataset, val_dataset, train_labels, test_labels, val_labels

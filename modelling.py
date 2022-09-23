@@ -22,8 +22,9 @@ class ConvBlock(Module):
         return x
 
 
-class GAN_Generator:
+class GAN_Generator(Module):
     def __init__(self):
+        super().__init__()
         # Downsampling
         self.conv1 = ConvBlock(3, 64)
         self.maxpool1 = MaxPool2d(2)
@@ -89,8 +90,9 @@ class GAN_Generator:
         return x
 
 
-class GAN_Discriminator:
+class GAN_Discriminator(Module):
     def __init__(self):
+        super().__init__()
         self.vgg16 = models.vgg16(pretrained='IMAGENET1K_V1')
         # Set requires_grad to False
         for param in self.vgg16.parameters():
