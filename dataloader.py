@@ -1,9 +1,9 @@
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
 import os
 
 
-class Dataset(DataLoader):
+class Dataset(Dataset):
     def __init__(self, image_paths, label_paths):
         self.image_paths = image_paths
         self.label_paths = label_paths
@@ -132,6 +132,6 @@ def create_train_test_eval_sets(exposure_errors_path=None, lol_path=None, uieb_p
         test_labels += test_labels
         val_labels += val_labels
 
-        print("Training Images: ", len(train_dataset), "images")
-        print("Testing Images: ", len(test_dataset), "images")
-        print("Validation Images: ", len(val_dataset), "images")
+    print("Training Images: ", len(train_dataset), "images")
+    print("Testing Images: ", len(test_dataset), "images")
+    print("Validation Images: ", len(val_dataset), "images")
