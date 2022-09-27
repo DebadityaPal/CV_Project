@@ -15,17 +15,14 @@ class GANDataset(Dataset):
         return self.image_paths[index], self.label_paths[index]
 
 
-def test_file_name(image_filepaths):
-    res = []
-    for image in image_filepaths:
-        ext = image.split('.')[-1]
-        image = image.split('.')[0]
-        image = image.split('_')[:-1]
-        image = '_'.join(image)
-        image = image + '.' + ext
-        image.replace('INPUT_IMAGES', 'GT_IMAGES')
-        res.append(image)
-    return res
+def test_file_name(image):
+    ext = image.split('.')[-1]
+    image = image.split('.')[0]
+    image = image.split('_')[:-1]
+    image = '_'.join(image)
+    image = image + '.' + ext
+    image = image.replace('INPUT_IMAGES', 'GT_IMAGES')
+    return image
 
 
 def create_train_test_eval_sets(exposure_errors_path=None, lol_path=None, uieb_path=None):
@@ -43,98 +40,96 @@ def create_train_test_eval_sets(exposure_errors_path=None, lol_path=None, uieb_p
     val_labels = []
 
     if exposure_errors_path is not None:
-        print("Loading exposure errors dataset")
-        # list of images
-        train_set = [
+        train_image_paths = [
             os.path.join(exposure_errors_path,
                          'training', 'INPUT_IMAGES', x)
             for x in os.listdir(os.path.join(exposure_errors_path, 'training', 'INPUT_IMAGES'))
         ]
-        test_set = [
+        test_image_paths = [
             os.path.join(exposure_errors_path,
                          'testing', 'INPUT_IMAGES', x)
             for x in os.listdir(os.path.join(exposure_errors_path, 'testing', 'INPUT_IMAGES'))
         ]
-        val_set = [
+        val_image_paths = [
             os.path.join(exposure_errors_path,
                          'validation', 'INPUT_IMAGES', x)
             for x in os.listdir(os.path.join(exposure_errors_path, 'validation', 'INPUT_IMAGES'))
         ]
 
-        train_dataset += train_set
-        test_dataset += test_set
-        val_dataset += val_set
+        train_label_paths = [test_file_name(
+            train_image_path) for train_image_path in train_image_paths]
+        test_label_paths = [test_file_name(
+            test_image_path) for test_image_path in test_image_paths]
+        val_label_paths = [test_file_name(val_image_path)
+                           for val_image_path in val_image_paths]
 
-        # list of labels
-        train_labels += test_file_name(train_set)
-        test_labels += test_file_name(test_set)
-        val_labels += test_file_name(val_set)
+        train_dataset.extend(train_image_paths)
+        test_dataset.extend(test_image_paths)
+        val_dataset.extend(val_image_paths)
+        train_labels.extend(train_label_paths)
+        test_labels.extend(test_label_paths)
+        val_labels.extend(val_label_paths)
 
     if lol_path is not None:
-        print("Loading LOL dataset")
-        # list of image names
-        total_dataset = []
-        total_labels = []
-        total_dataset += [
+        train_image_paths = [
             os.path.join(lol_path, 'our485', 'low', x)
             for x in os.listdir(os.path.join(lol_path, 'our485', 'low'))
         ]
-        total_dataset += [
-            os.path.join(lol_path, 'BrighteningTrain', 'low', x)
-            for x in os.listdir(os.path.join(lol_path, 'BrighteningTrain', 'low'))
-        ]
-        total_labels += [
+        train_label_paths = [
             os.path.join(lol_path, 'our485', 'high', x)
             for x in os.listdir(os.path.join(lol_path, 'our485', 'high'))
         ]
-        total_labels += [
+        train_image_paths += [
+            os.path.join(lol_path, 'BrighteningTrain', 'low', x)
+            for x in os.listdir(os.path.join(lol_path, 'BrighteningTrain', 'low'))
+        ]
+        train_label_paths += [
             os.path.join(lol_path, 'BrighteningTrain', 'high', x)
             for x in os.listdir(os.path.join(lol_path, 'BrighteningTrain', 'high'))
         ]
-        train_set, test_set = train_test_split(
-            total_dataset, test_size=0.2, random_state=42)
-        train_labels, test_labels = train_test_split(
-            total_labels, test_size=0.2, random_state=42)
-        train_dataset += train_set
-        test_dataset += test_set
-        train_labels += train_labels
-        test_labels += test_labels
-
-        val_dataset += [
+        eval_image_paths = [
             os.path.join(lol_path, 'eval15', 'low', x)
             for x in os.listdir(os.path.join(lol_path, 'eval15', 'low'))
         ]
-        val_labels += [
+        eval_label_paths = [
             os.path.join(lol_path, 'eval15', 'high', x)
             for x in os.listdir(os.path.join(lol_path, 'eval15', 'high'))
         ]
+        train_image_paths, test_image_paths = train_test_split(
+            train_image_paths, test_size=0.2, random_state=42)
+        train_label_paths, test_label_paths = train_test_split(
+            train_label_paths, test_size=0.2, random_state=42)
+
+        train_dataset.extend(train_image_paths)
+        test_dataset.extend(test_image_paths)
+        val_dataset.extend(eval_image_paths)
+        train_labels.extend(train_label_paths)
+        test_labels.extend(test_label_paths)
+        val_labels.extend(eval_label_paths)
 
     if uieb_path is not None:
-        print("Loading UIEB dataset")
-        total_dataset = []
-        total_labels = []
-        total_dataset += [
+        train_image_paths = [
             os.path.join(uieb_path, 'raw-890', x)
             for x in os.listdir(os.path.join(uieb_path, 'raw-890'))
         ]
-        total_labels += [
+        train_label_paths = [
             os.path.join(uieb_path, 'reference-890', x)
             for x in os.listdir(os.path.join(uieb_path, 'reference-890'))
         ]
-        train_set, test_set = train_test_split(
-            total_dataset, test_size=0.2, random_state=42)
-        train_labels, test_labels = train_test_split(
-            total_labels, test_size=0.2, random_state=42)
-        train_set, val_set = train_test_split(
-            train_set, test_size=0.1, random_state=42)
-        train_labels, val_labels = train_test_split(
-            train_labels, test_size=0.1, random_state=42)
+        train_image_paths, test_image_paths = train_test_split(
+            train_image_paths, test_size=0.2, random_state=42)
+        train_label_paths, test_label_paths = train_test_split(
+            train_label_paths, test_size=0.2, random_state=42)
+        train_image_paths, eval_image_paths = train_test_split(
+            train_image_paths, test_size=0.2, random_state=42)
+        train_label_paths, eval_label_paths = train_test_split(
+            train_label_paths, test_size=0.2, random_state=42)
 
-        train_dataset += train_set
-        test_dataset += test_set
-        val_dataset += val_set
-        train_labels += train_labels
-        test_labels += test_labels
-        val_labels += val_labels
+        train_dataset.extend(train_image_paths)
+        test_dataset.extend(test_image_paths)
+        val_dataset.extend(eval_image_paths)
+        train_labels.extend(train_label_paths)
+        test_labels.extend(test_label_paths)
+        val_labels.extend(eval_label_paths)
 
     return train_dataset, test_dataset, val_dataset, train_labels, test_labels, val_labels

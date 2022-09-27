@@ -1,10 +1,10 @@
 import argparse
-import cv2
 import torch
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from dataloader import create_train_test_eval_sets, GANDataset
 from modelling import GAN_Generator, GAN_Discriminator
+import PIL
 
 
 def collate(batch):
@@ -12,23 +12,10 @@ def collate(batch):
     images = []
     ground_truths = []
     for image, ground_truth in batch:
-        image = cv2.imread(image)
-        ground_truth = cv2.imread(ground_truth)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        ground_truth = cv2.cvtColor(ground_truth, cv2.COLOR_BGR2RGB)
-
-        # Normalize images
-        if image.max() > 1:
-            image = image / 255.0
-        if ground_truth.max() > 1:
-            ground_truth = ground_truth / 255.0
-
+        image = PIL.Image.open(image)
+        ground_truth = PIL.Image.open(ground_truth)
         images.append(image)
         ground_truths.append(ground_truth)
-
-    images = torch.stack(images)
-    ground_truths = torch.stack(ground_truths)
-
     return images, ground_truths
 
 
@@ -70,11 +57,7 @@ def main(args):
         generator.train()
         discriminator.train()
         with tqdm(train_dataloader, unit='batch', leave=True, position=0) as pbar:
-
-            for images, ground_truths in train_dataloader:
-                images = images.to(device)
-                ground_truths = ground_truths.to(device)
-
+            for images, ground_truths in pbar:
                 ##################################
                 # (1) Update Discriminator network
                 ##################################
@@ -82,18 +65,18 @@ def main(args):
                 discriminator_optimizer.zero_grad()
                 real_output = discriminator(ground_truths)
                 real_labels = torch.full(
-                    (args.batch_size,), 1, dtype=torch.float, device=device)
-                real_loss = torch.nn.functional.binary_cross_entropy(
-                    real_output, real_labels)
+                    (args.batch_size, 1), 1, dtype=torch.float, device=device)
+                loss_fct = torch.nn.BCEWithLogitsLoss()
+                real_loss = loss_fct(real_output, real_labels)
                 real_loss.backward()
 
                 # Create fake images
                 fake_images = generator(images)
-                fake_output = discriminator(fake_images.detach()).view(-1)
+                fake_output = discriminator(fake_images)
                 fake_labels = torch.full(
-                    (args.batch_size,), 0, dtype=torch.float, device=device)
-                fake_loss = torch.nn.functional.binary_cross_entropy(
-                    fake_output, fake_labels)
+                    (args.batch_size, 1), 0, dtype=torch.float, device=device)
+                loss_fct = torch.nn.BCEWithLogitsLoss()
+                fake_loss = loss_fct(fake_output, fake_labels)
                 fake_loss.backward()
 
                 # Update discriminator
@@ -104,59 +87,61 @@ def main(args):
                 # (2) Update Generator network
                 ##################################
                 generator_optimizer.zero_grad()
-                fake_output = discriminator(fake_images).view(-1)
+                fake_output = discriminator(fake_images)
                 fake_labels = torch.full(
-                    (args.batch_size,), 1, dtype=torch.float, device=device)
-                generator_discriminator_loss = torch.nn.functional.binary_cross_entropy(
+                    (args.batch_size, 1), 1, dtype=torch.float, device=device)
+                loss_fct = torch.nn.BCEWithLogitsLoss()
+                generator_discriminator_loss = loss_fct(
                     fake_output, fake_labels)
                 generator_discriminator_loss.backward()
-                generator_pixelwise_loss = torch.nn.functional.mse_loss(
-                    fake_images, ground_truths)
-                generator_pixelwise_loss.backward()
-                generator_loss = generator_discriminator_loss.item() + \
-                    generator_pixelwise_loss.item()
+                # generator_pixelwise_loss = torch.nn.functional.mse_loss(
+                #     fake_images, ground_truths)
+                # generator_pixelwise_loss.backward()
+                # generator_loss = generator_discriminator_loss.item() + \
+                #     generator_pixelwise_loss.item()
                 generator_optimizer.step()
 
                 pbar.set_description(f'Train Epoch {epoch}')
-                pbar.set_postfix(generator_loss=generator_loss.item(
-                ), discriminator_loss=discriminator_loss.item())
+                # pbar.set_postfix(generator_loss=generator_loss.item(
+                # ), discriminator_loss=discriminator_loss.item())
+                torch.cuda.empty_cache()
 
         generator.eval()
         discriminator.eval()
         with torch.no_grad():
             with tqdm(val_dataloader, unit='batch', leave=True, position=0) as pbar:
-                for images, ground_truths in val_dataloader:
-                    images = images.to(device)
-                    ground_truths = ground_truths.to(device)
+                for images, ground_truths in pbar:
                     fake_images = generator(images)
                     fake_labels = torch.full(
-                        (args.batch_size,), 0, dtype=torch.float, device=device)
+                        (args.batch_size, 1), 0, dtype=torch.float, device=device)
                     real_labels = torch.full(
-                        (args.batch_size,), 1, dtype=torch.float, device=device)
+                        (args.batch_size, 1), 1, dtype=torch.float, device=device)
                     # Combine real and fake images
-                    combined_images = torch.cat((ground_truths, fake_images))
+                    combined_images = ground_truths + fake_images
                     discriminator_labels = torch.cat(
                         (real_labels, fake_labels))
                     generator_labels = torch.cat((fake_labels, real_labels))
                     # Pass through discriminator
-                    combined_output = discriminator(combined_images).view(-1)
-                    discriminator_loss = torch.nn.functional.binary_cross_entropy(
+                    combined_output = discriminator(combined_images)
+                    loss_fct = torch.nn.BCEWithLogitsLoss()
+                    discriminator_loss = loss_fct(
                         combined_output, discriminator_labels)
-                    generator_discriminator_loss = torch.nn.functional.binary_cross_entropy(
+                    generator_discriminator_loss = loss_fct(
                         combined_output, generator_labels)
-                    generator_pixelwise_loss = torch.nn.functional.mse_loss(
-                        fake_images, ground_truths)
-                    generator_loss = generator_discriminator_loss.item() + \
-                        generator_pixelwise_loss.item()
+                    # generator_pixelwise_loss = torch.nn.functional.mse_loss(
+                    #     fake_images, ground_truths)
+                    # generator_loss = generator_discriminator_loss.item() + \
+                    #     generator_pixelwise_loss.item()
                     pbar.set_description(f'Val Epoch {epoch}')
-                    pbar.set_postfix(generator_loss=generator_loss.item(),
-                                     discriminator_loss=discriminator_loss.item())
+                    # pbar.set_postfix(generator_loss=generator_loss.item(),
+                    #                  discriminator_loss=discriminator_loss.item())
+                    torch.cuda.empty_cache()
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', type=int, default=10)
-    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--batch_size', type=int, default=2)
     parser.add_argument('--lr', type=float, default=0.001)
     args = parser.parse_args()
 

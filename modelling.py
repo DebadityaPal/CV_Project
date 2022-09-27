@@ -1,7 +1,11 @@
 import cv2
 import numpy as np
+import torch
 import torchvision.models as models
 from torch.nn import Module, Conv2d, LeakyReLU, BatchNorm2d, MaxPool2d, Upsample, Linear
+from torchvision.models import VGG16_Weights
+from torchvision import transforms
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class ConvBlock(Module):
@@ -45,55 +49,83 @@ class GAN_Generator(Module):
         self.upsample4 = Upsample(scale_factor=2)
         self.conv8 = Conv2d(64, 3, kernel_size=3, padding='same')
 
-    def generate_attention_mask(self, images):
+    def generate_attention_mask(self, image):
         # Extract illumination channel from RGB
-        illumination_channel = np.amax(images, axis=3)
+        illumination_channel = torch.amax(image, axis=1)
         # Normalize illumination channel
         illumination_channel = illumination_channel / \
-            np.max(illumination_channel)
+            torch.max(illumination_channel)
         # Generate attention mask (1 - illumination channel)
         attention_mask = 1 - illumination_channel
         return attention_mask
 
-    def forward(self, x):
-        input_images = x
-        # Generating attention mask
-        att_mask = self.generate_attention_mask(x)
+    def PILtoTensor(self, image):
+        # Convert PIL image to tensor
+        image = transforms.ToTensor()(image)
+        image = image.unsqueeze(0)
+        return image
 
-        # Downsampling
-        x = self.conv1(x)
-        x = self.maxpool1(x)
-        x = self.conv2(x)
-        x = self.maxpool2(x)
-        x = self.conv3(x)
-        x = self.maxpool3(x)
-        x = self.conv4(x)
-        x = self.maxpool4(x)
+    def TensortoPIL(self, image):
+        # Convert tensor to PIL image
+        image = transforms.ToPILImage()(image)
+        return image
 
-        # Upsampling
-        x = x * cv2.resize(att_mask, (x.shape[1], x.shape[2]))
-        x = self.upsample1(x)
-        x = self.conv5(x)
-        x = x * cv2.resize(att_mask, (x.shape[1], x.shape[2]))
-        x = self.upsample2(x)
-        x = self.conv6(x)
-        x = x * cv2.resize(att_mask, (x.shape[1], x.shape[2]))
-        x = self.upsample3(x)
-        x = self.conv7(x)
-        x = x * cv2.resize(att_mask, (x.shape[1], x.shape[2]))
-        x = self.upsample4(x)
-        x = self.conv8(x)
+    def resize(self, img, width, height):
+        # Resize attension mask
+        output = transforms.Resize((width, height))(img)
+        return output
 
-        # Adding input image to the output
-        x = x * att_mask
-        x = x + input_images
-        return x
+    def forward(self, inputs):
+        outputs = []
+        for image in inputs:
+            input_image = self.PILtoTensor(image).to(device)
+            # Generating attention mask
+            att_mask = self.generate_attention_mask(input_image)
+
+            # Downsampling
+            x = self.conv1(input_image)
+            x = self.maxpool1(x)
+            x = self.conv2(x)
+            x = self.maxpool2(x)
+            x = self.conv3(x)
+            x = self.maxpool3(x)
+            x = self.conv4(x)
+            x = self.maxpool4(x)
+
+            # Upsampling
+            x = x * self.resize(att_mask, x.shape[2], x.shape[3])
+            x = self.upsample1(x)
+            x = self.conv5(x)
+            x = x * self.resize(att_mask, x.shape[2], x.shape[3])
+            x = self.upsample2(x)
+            x = self.conv6(x)
+            x = x * self.resize(att_mask, x.shape[2], x.shape[3])
+            x = self.upsample3(x)
+            x = self.conv7(x)
+            x = x * self.resize(att_mask, x.shape[2], x.shape[3])
+            x = self.upsample4(x)
+            x = self.conv8(x)
+
+            # Remove Batch Dimension
+            x = torch.squeeze(x, 0)
+            x = self.resize(x, input_image.shape[2], input_image.shape[3])
+            # Adding input image to the output
+            x = x * att_mask
+            x = x + torch.squeeze(input_image, 0)
+
+            # Converting tensor to PIL image
+            x = self.TensortoPIL(x)
+            outputs.append(x)
+
+        return outputs
 
 
 class GAN_Discriminator(Module):
     def __init__(self):
         super().__init__()
-        self.vgg16 = models.vgg16(pretrained='IMAGENET1K_V1')
+        self.weights = VGG16_Weights.IMAGENET1K_V1
+        self.vgg16 = models.vgg16(weights=self.weights)
+        self.preprocess = self.weights.transforms()
         # Set requires_grad to False
         for param in self.vgg16.parameters():
             param.requires_grad = False
@@ -103,6 +135,11 @@ class GAN_Discriminator(Module):
         # Set Last layer to 1 class
         self.vgg16.classifier[6] = Linear(4096, 1)
 
+    def process(self, image):
+        image = self.preprocess(image)
+        return image
+
     def forward(self, x):
-        x = self.vgg16(x)
-        return x
+        images = torch.stack([self.process(image) for image in x]).to(device)
+        outputs = self.vgg16(images)
+        return outputs
