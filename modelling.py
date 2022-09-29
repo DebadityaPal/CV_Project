@@ -32,20 +32,20 @@ class GAN_Generator(Module):
         # Downsampling
         self.conv1 = ConvBlock(3, 64)
         self.maxpool1 = MaxPool2d(2)
-        self.conv2 = ConvBlock(64, 128)
+        self.conv2 = ConvBlock(64, 64)
         self.maxpool2 = MaxPool2d(2)
-        self.conv3 = ConvBlock(128, 128)
+        self.conv3 = ConvBlock(64, 64)
         self.maxpool3 = MaxPool2d(2)
-        self.conv4 = ConvBlock(128, 128)
+        self.conv4 = ConvBlock(64, 64)
         self.maxpool4 = MaxPool2d(2)
 
         # Upsampling
         self.upsample1 = Upsample(scale_factor=2)
-        self.conv5 = Conv2d(128, 128, kernel_size=3, padding='same')
+        self.conv5 = Conv2d(64, 64, kernel_size=3, padding='same')
         self.upsample2 = Upsample(scale_factor=2)
-        self.conv6 = Conv2d(128, 128, kernel_size=3, padding='same')
+        self.conv6 = Conv2d(64, 64, kernel_size=3, padding='same')
         self.upsample3 = Upsample(scale_factor=2)
-        self.conv7 = Conv2d(128, 64, kernel_size=3, padding='same')
+        self.conv7 = Conv2d(64, 64, kernel_size=3, padding='same')
         self.upsample4 = Upsample(scale_factor=2)
         self.conv8 = Conv2d(64, 3, kernel_size=3, padding='same')
 

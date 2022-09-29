@@ -26,17 +26,14 @@ def collate(batch):
     return images, ground_truths, shapes
 
 
-def preprocess_vgg16(images):
-    image_tensors = torch.zeros((len(images), 3, 224, 224))
+def preprocess_vgg16(image):
     preprocess = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
                              0.229, 0.224, 0.225]),
     ])
-    for i, image in enumerate(images):
-        image = preprocess(image)
-        image_tensors[i] = image
-    return image_tensors
+    output = preprocess(image)
+    return output
 
 
 def remove_padding(images, shapes):
@@ -69,9 +66,9 @@ def main(args):
     print("Using device: {}".format(device))
 
     train_dataset, _, val_dataset, train_labels, _, val_labels = create_train_test_eval_sets(
-        exposure_errors_path=r'D:\Academics\CV_project\datasets\Exposure-Errors',
+        # exposure_errors_path=r'D:\Academics\CV_project\datasets\Exposure-Errors',
         lol_path=r'D:\Academics\CV_project\datasets\LOL',
-        uieb_path=r'D:\Academics\CV_project\datasets\UIEB'
+        # uieb_path=r'D:\Academics\CV_project\datasets\UIEB'
     )
     # Print length of datasets
     print("Train dataset length: {}".format(len(train_dataset)))
@@ -100,6 +97,9 @@ def main(args):
     # Loss history
     train_generator_loss_history = []
     train_discriminator_loss_history = []
+    val_generator_loss_history = []
+    val_discriminator_loss_history = []
+
     # Training Loop begins here
     for epoch in range(args.epochs):
         generator.train()
@@ -118,13 +118,15 @@ def main(args):
                     2, 0, 1).float()
                 image = image.unsqueeze(0)
                 ground_truth = ground_truth.unsqueeze(0)
+                image = image.to(device)
+                ground_truth = ground_truth.to(device)
                 ##################################
                 # (1) Update Discriminator network
                 ##################################
                 # Pass real images through discriminator
                 discriminator_optimizer.zero_grad()
                 discriminator_inputs = preprocess_vgg16(
-                    ground_truth).to(device)
+                    ground_truth)
                 real_output = discriminator(discriminator_inputs)
                 real_labels = torch.full(
                     (1, 1), 1, dtype=torch.float, device=device)
@@ -132,7 +134,7 @@ def main(args):
                 real_loss = loss_fct(real_output, real_labels)
 
                 # Create fake images
-                fake_image = generator(image.to(device))
+                fake_image = generator(image)
                 fake_output = discriminator(fake_image.detach())
                 fake_labels = torch.full(
                     (1, 1), 0, dtype=torch.float, device=device)
@@ -155,7 +157,7 @@ def main(args):
                 generator_discriminator_loss = loss_fct(
                     fake_output, fake_labels)
                 generator_pixelwise_loss = torch.nn.functional.mse_loss(
-                    fake_image, ground_truth.to(device))
+                    fake_image, ground_truth)
                 generator_loss = generator_discriminator_loss + \
                     generator_pixelwise_loss
                 generator_loss.backward()
@@ -167,12 +169,15 @@ def main(args):
                 pbar.set_description(f'Train Epoch {epoch}')
                 pbar.set_postfix(generator_loss=generator_loss.item(
                 ), discriminator_loss=discriminator_loss.item())
+                torch.cuda.empty_cache()
 
         train_generator_loss_history.append(avg_train_generator_loss)
         train_discriminator_loss_history.append(avg_train_discriminator_loss)
 
         generator.eval()
         discriminator.eval()
+        avg_val_generator_loss = 0
+        avg_val_discriminator_loss = 0
         with torch.no_grad():
             with tqdm(val_dataset, unit='batch', leave=True, position=0) as pbar:
                 for image, ground_truth in pbar:
@@ -210,9 +215,27 @@ def main(args):
                         fake_image, ground_truth)
                     generator_loss = generator_discriminator_loss + \
                         generator_pixelwise_loss
+
+                    avg_val_generator_loss += generator_loss.item() / len(val_dataset)
+                    avg_val_discriminator_loss += discriminator_loss.item() / len(val_dataset)
+
                     pbar.set_description(f'Val Epoch {epoch}')
                     pbar.set_postfix(generator_loss=generator_loss.item(),
                                      discriminator_loss=discriminator_loss.item())
+                    torch.cuda.empty_cache()
+
+        val_generator_loss_history.append(avg_val_generator_loss)
+        val_discriminator_loss_history.append(avg_val_discriminator_loss)
+
+        # Save model
+        torch.save(generator.state_dict(), f'generator_{epoch}.pth')
+        torch.save(discriminator.state_dict(), f'discriminator_{epoch}.pth')
+
+        # Save optimizer state
+        torch.save(generator_optimizer.state_dict(),
+                   f'generator_optimizer_{epoch}.pth')
+        torch.save(discriminator_optimizer.state_dict(),
+                   f'discriminator_optimizer_{epoch}.pth')
 
 
 if __name__ == '__main__':
